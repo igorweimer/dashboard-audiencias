@@ -1,0 +1,5 @@
+AGENDA,CP,DATA,HORÁRIO,AUTOR,N° DO PROCESSO,RÉU,ADVOGADO/A,PREPOSTO,CONTRATAÇÃO DOC9,VERIFICAÇÃO DE ATA,TIPO DE COMPROMISSO,MODALIDADE,COMARCA,VARA,OBSERVAÇÃO
+123,001,31/03/2026,14:00,João Silva,0001234-56.2026.8.21.0001,Empresa XYZ,Mariana Costa,Sim,Não,Pendente,Audiência de Conciliação,Virtual,Porto Alegre,1ª Vara Cível,Prioridade alta
+124,002,31/03/2026,16:30,Maria Oliveira,0005678-90.2026.8.21.0001,Gramado Parks,Roberto Alves,Não,Sim,OK,Audiência de Instrução,Presencial,Gramado,2ª Vara Cível,Levar documentos físicos
+125,003,02/04/2026,10:00,Carlos Souza,0009876-54.2026.8.21.0001,Empresa ABC,Mariana Costa,Não,Não,Pendente,Audiência Inicial,Virtual,Canoas,3ª Vara do Trabalho,
+126,004,15/04/2026,09:15,Ana Pereira,0001111-22.2026.8.21.0001,Gramado Parks,Fernanda Lima,Sim,Sim,Pendente,Audiência de Custódia,Presencial,Caxias do Sul,1ª Vara Criminal,

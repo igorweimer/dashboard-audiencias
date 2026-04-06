@@ -243,11 +243,39 @@ function normalizeTeamMember(name, whitelist) {
     return DOC9_LABEL; // Nome externo = DOC9
 }
 
+function isCanceled(hearing) {
+    // Verifica se a audiência foi cancelada.
+    // Conforme a planilha: "CANCELADA" aparece na coluna ADVOGADO/A (H),
+    // mas também pode estar em PREPOSTO (I) ou outras colunas de status.
+    const colsToCheck = [
+        hearing['ADVOGADO/A'],
+        hearing['ADVOGADO'],
+        hearing['PREPOSTO'],
+        hearing['SITUAÇÃO'], hearing['SITUACAO'], hearing['SITUAÇÃO/STATUS'],
+        hearing['STATUS'], hearing['SISTEMA'], hearing['RESULTADO'],
+        hearing['OJ'], hearing['G'], hearing['H'], hearing['I']
+    ];
+    return colsToCheck.some(val => val && val.toString().toUpperCase().includes('CANCELAD'));
+}
+
 function isDoc9(hearing) {
-    // DOC9 é determinado APENAS pela modalidade PRESENCIAL
-    // Nomes externos em audiências virtuais NÃO geram DOC9
+    // DOC9: modalidade PRESENCIAL + ADV e PREP são externos (não da equipe)
     const modalidade = (hearing['MODALIDADE'] || '').toUpperCase();
-    return modalidade.includes('PRESENCIAL') && !modalidade.includes('SEMI');
+    if (!modalidade.includes('PRESENCIAL') || modalidade.includes('SEMI')) return false;
+
+    // Se o advogado OU o preposto for da nossa equipe → audiência é NOSSA, não DOC9
+    const rawAdv = hearing['ADVOGADO/A'] || hearing['ADVOGADO'] || '';
+    const rawPrep = hearing['PREPOSTO'] || '';
+    const advNorm = normalizeTeamMember(rawAdv, ADV_WHITELIST);
+    const prepNorm = normalizeTeamMember(rawPrep, PREP_WHITELIST);
+
+    const advIsTeam = ADV_WHITELIST.includes(advNorm);
+    const prepIsTeam = PREP_WHITELIST.includes(prepNorm);
+
+    // Se qualquer membro da equipe estiver envolvido → não é DOC9
+    if (advIsTeam || prepIsTeam) return false;
+
+    return true; // Externo + Presencial = DOC9
 }
 
 function pessoaMatchesHearing(pessoaName, hearing) {
@@ -270,6 +298,9 @@ function updateDashboard() {
     const pessoaSel = pessoaFilter ? pessoaFilter.value : 'todos';
 
     const filteredHearings = allHearings.filter(hearing => {
+        // Audiências canceladas NÃO aparecem nas views de dia/semana/todas
+        if (isCanceled(hearing)) return false;
+
         const dataStr = hearing['DATA'] || hearing['Data'] || hearing['data'];
         if (!dataStr) return false;
         const parts = dataStr.split('/');
@@ -1000,24 +1031,24 @@ function renderCalendar(year, month) {
             const advogadoTxt = rawAdv.toUpperCase();
             const hasRealLink = isValidMeetingLink(obs);
 
-            // === LÓGICA DE STATUS — 5 REGRAS FIXAS ===
-            // A MODALIDADE é sempre o critério principal.
+            // === LÓGICA DE STATUS — REGRAS ORDENADAS POR PRIORIDADE ===
             let statusClass = '';
+            const canceled = isCanceled(h);
+            const doc9 = isDoc9(h);
 
-            if (advogadoTxt.includes('CANCELADA')) {
-                // REGRA 1: Cancelada
+            if (canceled) {
+                // REGRA 1: Cancelada → vermelho no calendário
                 statusClass = 'status-cancelada';
 
-            } else if (modalidade.includes('PRESENCIAL') && !modalidade.includes('SEMI')) {
-                // REGRA 2: Presencial (DOC9)
+            } else if (doc9) {
+                // REGRA 2: Presencial SEM equipe = DOC9
                 // Sem ADV e sem PREP = Pendente (Split)
-                // Com ADV ou PREP = Confirmada (Magenta)
+                // Com alguém externo = Confirmada (Magenta)
                 statusClass = (semAdv && semPrep) ? 'status-doc9-split' : 'status-doc9';
 
             } else {
-                // REGRA 3: Virtual, Semi-Presencial ou sem modalidade
-                // Sem link real = Azul (Sem Link)
-                // Com link real = Amarelo (Virtual)
+                // REGRA 3: Nossa equipe ou virtual
+                // Sem link real = Azul (Sem Link) | Com link = Amarelo (Virtual)
                 statusClass = hasRealLink ? 'status-virtual' : 'status-sem-link';
             }
 
