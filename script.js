@@ -138,12 +138,29 @@ document.addEventListener('DOMContentLoaded', () => {
     setInterval(processSyncQueue, 3000);
 });
 
-// ─── Detecta se o usuário está digitando em algum campo do accordion ───
-function isUserEditing() {
+// ─── Detecta se o usuário está interagindo com a página ───
+// Se sim, o auto-refresh NÃO re-renderiza nada (zero flicker).
+function isUserBusy() {
+    // 1. Publicação aberta (lendo teor)
+    if (expandedUid) return true;
+    // 2. Mailbox aberta
+    const mailbox = document.getElementById('mailbox-modal');
+    if (mailbox && !mailbox.classList.contains('hidden')) return true;
+    // 3. Modal de confirmação visível
+    const confirmModal = document.getElementById('confirm-read-modal');
+    if (confirmModal && confirmModal.style.display === 'flex') return true;
+    // 4. Digitando em algum campo
     const el = document.activeElement;
-    if (!el) return false;
-    const tag = el.tagName.toLowerCase();
-    return (tag === 'textarea' || tag === 'input') && !!el.closest('.detail-row, .delegation-box, .mbox-subject-row');
+    if (el) {
+        const tag = el.tagName.toLowerCase();
+        if ((tag === 'textarea' || tag === 'input') && !!el.closest('.detail-row, .delegation-box, .mbox-subject-row, .filter-bar')) return true;
+    }
+    return false;
+}
+
+// Mantém compatibilidade com referências antigas
+function isUserEditing() {
+    return isUserBusy();
 }
 
 // ─── Modal de confirmação (caixinha no canto inferior) ───
@@ -169,16 +186,16 @@ function askConfirmRead(msg, callback) {
 
 // ─────────── FETCH DATA ───────────
 async function fetchPublications() {
-    // Se o usuário está digitando, atualiza os dados mas NÃO re-renderiza
-    // para não apagar o que ele está escrevendo
-    if (isUserEditing()) {
+    // Se o usuário está interagindo (lendo publicação, mailbox, editando),
+    // atualiza os dados em memória mas NÃO toca no DOM — zero flicker.
+    if (isUserBusy()) {
         try {
             const cacheBust = `?t=${Date.now()}`;
             const response = await fetch(CONFIG.APPS_SCRIPT_URL + cacheBust);
             const data = await response.json();
             allPublications = data.map(normalizePublication);
             detectNewPublications();
-            setSyncStatus('ok', 'Conectado (modo edição)');
+            setSyncStatus('ok', 'Conectado');
         } catch(e) { /* silencioso */ }
         return;
     }
