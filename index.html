@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Painel de Audiências - Gramado Parks</title>
+    <meta name="description" content="Portal interno de audiências jurídicas da Gramado Parks. Visualize, filtre e gerencie audiências por dia, semana ou mês.">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    
+    <!-- PapaParse para ler CSV -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    
+    <!-- PDF.js para ler os PDFs diretos do navegador -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+    <script>
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+    </script>
+    
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <!-- Chart.js para Métricas Visuais -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <!-- SheetJS para exportar Excel -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+</head>
+<body>
+    <div class="dashboard-container">
+        <!-- Header -->
+        <header class="header">
+            <div class="logo-area">
+                <img src="logo.png" alt="Logo Gramado Parks" id="company-logo" onerror="this.onerror=null; this.src=''; this.alt='Gramado Parks';">
+                <div class="logo-text">
+                    <h1>Portal de Audiências</h1>
+                    <span>Jurídico Interno</span>
+                </div>
+            </div>
+            <nav class="filters">
+                <button class="filter-btn active" data-view="dia">
+                    <i data-lucide="calendar"></i> Dia
+                </button>
+                <button class="filter-btn" data-view="semana">
+                    <i data-lucide="calendar-days"></i> Semana
+                </button>
+                <button class="filter-btn" data-view="mes">
+                    <i data-lucide="calendar-range"></i> Mês Atual
+                </button>
+                <button class="filter-btn" data-view="todas">
+                    <i data-lucide="list"></i> Todas as Futuras
+                </button>
+                <button class="filter-btn" id="config-ia-btn" title="Configurar Inteligência Artificial">
+                    <i data-lucide="bot"></i> Configurar IA
+                </button>
+            </nav>
+        </header>
+
+        <!-- Navegação Principal do App (SPA) -->
+        <div class="top-nav-tabs">
+            <button class="nav-tab active" data-target="agenda-view"><i data-lucide="calendar-clock"></i> <span>Agenda</span></button>
+            <button class="nav-tab" data-target="metrics-view"><i data-lucide="bar-chart-3"></i> <span>Pauta e Gestão</span></button>
+        </div>
+
+        <main class="main-content">
+            <!-- VISÃO 1: AGENDA -->
+            <div id="agenda-view" class="view-section">
+                <section class="summary-cards">
+                    <div class="card premium-card">
+                        <div class="card-icon"><i data-lucide="scale"></i></div>
+                        <div class="card-info">
+                            <h3>Audiências <span id="view-title">Hoje</span></h3>
+                            <p class="number" id="total-audiencias">0</p>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="schedule-section">
+                    <div class="section-header">
+                        <h2>Cronograma <span style="font-size:0.8rem; font-weight:normal; color:var(--text-muted);">(Clique em uma audiência para ver/gerar o Resumo Inteligente)</span></h2>
+                        <input type="file" id="csv-file" accept=".csv" style="display: none;" />
+                        <button class="import-btn" onclick="document.getElementById('csv-file').click()">
+                            <i data-lucide="upload-cloud"></i> Atualizar Planilha
+                        </button>
+                    </div>
+
+                    <!-- Barra de Filtros da Tabela -->
+                    <div class="table-filter-bar">
+                        <div class="filter-group">
+                            <i data-lucide="user-search" style="width:16px;height:16px;color:var(--text-muted);"></i>
+                            <label for="pessoa-filter">Filtrar por pessoa:</label>
+                            <select id="pessoa-filter" class="pessoa-select">
+                                <option value="todos">👥 Todos</option>
+                            </select>
+                        </div>
+                        <div class="legend-row">
+                            <span class="legend-dot" style="background:#c17fd0;"></span><span>DOC9</span>
+                            <span class="legend-dot" style="background:#165b41;"></span><span>Nossa equipe</span>
+                        </div>
+                    </div>
+
+                    <div class="table-container">
+                        <table class="minimal-table">
+                            <thead>
+                                <tr>
+                                    <th>Data/Hora</th>
+                                    <th>Autor x Réu</th>
+                                    <th>Processo</th>
+                                    <th>Advogado e Preposto</th>
+                                    <th>Vara/Comarca</th>
+                                    <th>Tipo / Modalidade</th>
+                                </tr>
+                            </thead>
+                            <tbody id="table-body">
+                                <tr>
+                                    <td colspan="6" class="empty-state">
+                                        <div class="empty-content">
+                                            <i data-lucide="file-spreadsheet"></i>
+                                            <p>Conectando à planilha...</p>
+                                        </div>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <!-- CALENDÁRIO MENSAL (visível quando filtro=mes) -->
+                <section id="calendar-section" class="hidden">
+                    <div class="calendar-nav">
+                        <button id="cal-prev" class="cal-nav-btn"><i data-lucide="chevron-left"></i></button>
+                        <h2 id="cal-title">Abril 2026</h2>
+                        <button id="cal-next" class="cal-nav-btn"><i data-lucide="chevron-right"></i></button>
+                    </div>
+
+                    <!-- Filtro de pessoa no calendário -->
+                    <div class="cal-filter-bar">
+                        <div class="filter-group">
+                            <i data-lucide="user-search" style="width:16px;height:16px;color:var(--text-muted);"></i>
+                            <label for="cal-pessoa-filter">Filtrar por pessoa:</label>
+                            <select id="cal-pessoa-filter" class="pessoa-select">
+                                <option value="todos">👥 Todos</option>
+                            </select>
+                        </div>
+                        <!-- Legenda de Cores -->
+                        <div class="cal-legend">
+                            <div class="legend-item"><span class="legend-dot" style="background:#fff9c4;"></span><span>Virtual / Semi</span></div>
+                            <div class="legend-item"><span class="legend-dot" style="background:#c17fd0;"></span><span>DOC9 (Presencial)</span></div>
+                            <div class="legend-item"><span class="legend-dot" style="background:linear-gradient(135deg, #c17fd0 50%, #6a1b9a 50%);"></span><span>DOC9 Pendente</span></div>
+                            <div class="legend-item"><span class="legend-dot" style="background:#1e88e5;"></span><span>Sem Link</span></div>
+                            <div class="legend-item"><span class="legend-dot" style="background:#d32f2f;"></span><span>Cancelada</span></div>
+                            <div class="legend-item"><span class="legend-dot" style="background:#f0f7ff;"></span><span>Feriado</span></div>
+                        </div>
+                    </div>
+
+                    <div class="calendar-grid-header">
+                        <span>Dom</span><span>Seg</span><span>Ter</span><span>Qua</span><span>Qui</span><span>Sex</span><span>Sáb</span>
+                    </div>
+                    <div class="calendar-grid" id="calendar-grid"></div>
+                </section>
+
+            </div> <!-- End Agenda View -->
+
+            <!-- VISÃO 2: MÉTRICAS (Pauta e Gestão) -->
+            <div id="metrics-view" class="view-section hidden">
+                <section class="summary-cards" style="margin-bottom: 2rem;">
+                    <div class="card premium-card" style="flex: 1;">
+                        <div class="card-icon" style="background:#0d3b2a;color:#d4af37;"><i data-lucide="briefcase"></i></div>
+                        <div class="card-info" style="flex: 1;">
+                            <h3>Total no Período Selecionado</h3>
+                            <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 12px;">
+                                <p class="number" id="metric-total-audiencias">0</p>
+                                <select id="metric-month-select" class="metric-select"></select>
+                                <button id="download-excel-btn" class="import-btn download-btn" title="Baixar relatório em Excel">
+                                    <i data-lucide="file-spreadsheet"></i> Baixar Excel
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Legenda dos gráficos -->
+                <div class="chart-legend-row">
+                    <span class="legend-dot" style="background:#165b41;"></span><span>Advogado da equipe</span>
+                    <span class="legend-dot" style="background:#d4af37;"></span><span>Preposto da equipe</span>
+                    <span class="legend-dot" style="background:#c17fd0;"></span><span>DOC9 (externo)</span>
+                    <span class="legend-dot" style="background:#dce3e0;border:1px solid #aaa;"></span><span>Sem Responsável</span>
+                    <span style="font-size:0.78rem;color:var(--text-muted);margin-left:8px;">💡 Clique em uma barra para ver as audiências</span>
+                </div>
+
+                <section class="charts-grid">
+                    <div class="chart-container">
+                        <h3><i data-lucide="scale"></i> Audiências por Advogado</h3>
+                        <canvas id="advogadoChart"></canvas>
+                    </div>
+                    <div class="chart-container">
+                        <h3><i data-lucide="users"></i> Audiências por Preposto</h3>
+                        <canvas id="prepostoChart"></canvas>
+                    </div>
+                </section>
+
+                <!-- Área de detalhes ao clicar no gráfico -->
+                <div id="chart-detail-section" class="hidden">
+                    <div class="detail-header">
+                        <div>
+                            <span id="detail-person-badge" class="detail-badge"></span>
+                            <span id="detail-count-text" class="detail-count-text"></span>
+                        </div>
+                        <div style="display:flex;gap:10px;align-items:center;">
+                            <button id="download-filtered-excel-btn" class="import-btn download-btn" title="Baixar apenas estas audiências">
+                                <i data-lucide="file-down"></i> Baixar Filtrado
+                            </button>
+                            <button id="clear-chart-selection-btn" class="clear-btn">
+                                <i data-lucide="x"></i> Limpar seleção
+                            </button>
+                        </div>
+                    </div>
+                    <div class="table-container" style="margin-top:12px;">
+                        <table class="minimal-table">
+                            <thead>
+                                <tr>
+                                    <th>Data/Hora</th>
+                                    <th>Autor x Réu</th>
+                                    <th>Processo</th>
+                                    <th>Papel</th>
+                                    <th>Vara/Comarca</th>
+                                    <th>Tipo / Modalidade</th>
+                                </tr>
+                            </thead>
+                            <tbody id="detail-table-body"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+            </div> <!-- End Metrics View -->
+            
+        </main>
+    </div>
+
+    <!-- MODAL (Detalhes da Audiência e IA) -->
+    <div id="hearing-modal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Detalhes e Roteiro da Audiência</h2>
+                <button id="close-modal-btn" class="icon-btn"><i data-lucide="x"></i></button>
+            </div>
+            
+            <div class="modal-body">
+                <div class="hearing-info-box">
+                    <p><strong>Processo:</strong> <span id="modal-processo"></span></p>
+                    <p><strong>Partes:</strong> <span id="modal-partes"></span></p>
+                    <p><strong>Data/Hora:</strong> <span id="modal-data"></span></p>
+                    <p><strong>Advogado:</strong> <span id="modal-advogado"></span></p>
+                    <p><strong>Preposto:</strong> <span id="modal-preposto"></span></p>
+                    <p><strong>Links/Observações:</strong> <span id="modal-link"></span></p>
+                </div>
+
+                <div id="existing-summary-section" class="hidden">
+                    <h3>Resumo / Observações da Planilha:</h3>
+                    <div id="modal-resumo-texto" class="resumo-box" style="white-space: pre-wrap;"></div>
+                </div>
+
+                <div id="ai-generator-section">
+                    <h3 style="margin-top: 20px; color: var(--primary-color);">
+                        <i data-lucide="sparkles" style="width:16px;height:16px;color:var(--gold);"></i> 
+                        Resumo com IA (Gemini Pro)
+                    </h3>
+                    <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 15px;">
+                        Anexe os PDFs da Inicial e/ou Contestação para que a IA gere um Roteiro de Audiência.
+                    </p>
+
+                    <div class="file-upload-grid">
+                        <div class="upload-card">
+                            <h4>Petição Inicial</h4>
+                            <input type="file" id="pdf-inicial" accept=".pdf" />
+                            <span id="pdf-inicial-status" class="status-msg"></span>
+                        </div>
+                        <div class="upload-card">
+                            <h4>Contestação</h4>
+                            <input type="file" id="pdf-contestacao" accept=".pdf" />
+                            <span id="pdf-contestacao-status" class="status-msg"></span>
+                        </div>
+                    </div>
+
+                    <button id="generate-ai-btn" class="import-btn ai-btn" style="width: 100%; justify-content: center; margin-top: 15px;">
+                        <i data-lucide="bot"></i> Gerar Resumo e Roteiro
+                    </button>
+
+                    <div id="ai-result-section" class="hidden" style="margin-top: 20px;">
+                        <div class="resumo-box" id="ai-output" style="white-space: pre-wrap;"></div>
+                        <div class="ai-persistence-hint">
+                            <i data-lucide="info" style="min-width: 20px;"></i>
+                            <p><strong>Como salvar:</strong> Clique em Copiar e cole na coluna "OBSERVAÇÃO" da planilha.</p>
+                        </div>
+                        <button id="copy-summary-btn" class="import-btn" style="background-color: var(--primary-light);">
+                            <i data-lucide="copy"></i> Copiar Resumo para a Planilha
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tela de Carregamento da IA -->
+    <div id="loading-overlay" class="loading-overlay hidden">
+        <div class="spinner"></div>
+        <p>Analisando PDFs e Gerando Roteiro...</p>
+    </div>
+
+    <script src="script.js"></script>
+    <script>lucide.createIcons();</script>
+</body>
+</html>
