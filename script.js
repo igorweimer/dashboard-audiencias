@@ -67,10 +67,11 @@ const aiOutput = document.getElementById('ai-output');
 const loadingOverlay = document.getElementById('loading-overlay');
 
 // ==========================================
-// CONFIGURAÇÃO DA CHAVE DA API (Gemini)
+// ==========================================
+// CONFIGURAÇÃO DA CHAVE DA API (Gemini IA)
 // ==========================================
 configBtn.addEventListener('click', () => {
-    const key = prompt("Cole aqui a sua Chave de API do Google Gemini (Gemini PRO):", geminiApiKey);
+    const key = prompt("🤖 Cole aqui a sua Chave de API do Google Gemini (Gemini PRO):", geminiApiKey);
     if (key !== null) {
         geminiApiKey = key.trim();
         localStorage.setItem('geminiApiKey', geminiApiKey);
@@ -78,33 +79,102 @@ configBtn.addEventListener('click', () => {
     }
 });
 
+
 // ==========================================
 // CSV LOADING (Google Sheets)
 // ==========================================
+
+/**
+ * URL do CSV publicado da planilha (fallback via proxies CORS).
+ */
 const PLANILHA_LINK = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTgROOudqi7NF6i3E_JS5lNdjgnfohAqGzVbCgHXPx1qcrGLKy2jstoAjzZRIp8bmKFdA_zU6R1f57_/pub?gid=438372030&single=true&output=csv";
 
+/**
+ * ⬇️ COLE AQUI A URL DO APPS SCRIPT APÓS PUBLICAR COMO "APLICATIVO WEB" ⬇️
+ * Exemplo: "https://script.google.com/macros/s/AKfycby.../exec"
+ * Com isso, todos que abrirem o dashboard carregam a planilha diretamente,
+ * sem depender de proxies externos e sem precisar configurar nada.
+ */
+const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbw_fb8YI2M7e_ELLA_6Pr_kSNGDdFk_JSrIMUIQrL7UG6XgBxQMoMi2OPrfYpOjKn42/exec";
+
+// Proxies CORS externos (fallback quando o Apps Script não está configurado)
 const PROXIES = [
-    "https://api.allorigins.win/raw?url=",
-    "https://corsproxy.io/?",
-    "https://api.codetabs.com/v1/proxy?quest="
+    (url) => `https://corsproxy.io/?url=${encodeURIComponent(url)}`,
+    (url) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+    (url) => `https://thingproxy.freeboard.io/fetch/${url}`,
+    (url) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
+    (url) => `https://proxy.cors.sh/${url}`,
 ];
 
-async function tryFetchWithProxies(url) {
-    for (const proxy of PROXIES) {
+/**
+ * Busca o CSV da planilha.
+ * Ordem de tentativa:
+ *   1. Apps Script próprio (sem CORS, confiável) — se APPS_SCRIPT_URL configurado
+ *   2. URL direta do Sheets (geralmente bloqueada por CORS, mas tenta)
+ *   3. Proxies CORS externos como último recurso
+ */
+async function fetchCSV() {
+    // ── 1. Apps Script endpoint próprio ──────────────────────
+    if (APPS_SCRIPT_URL) {
         try {
-            const res = await fetch(proxy + encodeURIComponent(url), { signal: AbortSignal.timeout(8000) });
-            if (res.ok) return await res.text();
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), 12000);
+            const res = await fetch(APPS_SCRIPT_URL + "?gid=438372030", { signal: controller.signal });
+
+            clearTimeout(timer);
+            if (res.ok) {
+                const text = await res.text();
+                if (text && text.length > 10 && !text.trim().startsWith('<')) {
+                    console.log("✅ Dados carregados via Apps Script endpoint.");
+                    return text;
+                }
+            }
         } catch (e) {
-            console.warn("Proxy falhou, tentando próximo:", proxy, e.message);
+            console.warn("Apps Script endpoint falhou, tentando fallback:", e.message);
         }
     }
-    throw new Error("Todos os proxies falharam.");
+
+    // ── 2. Fetch direto (funciona apenas se CORS estiver aberto) ──
+    try {
+        const res = await fetch(PLANILHA_LINK, { signal: AbortSignal.timeout(5000), mode: 'cors' });
+        if (res.ok) {
+            const text = await res.text();
+            if (text && text.length > 10 && !text.trim().startsWith('<')) {
+                console.log("✅ Dados carregados diretamente.");
+                return text;
+            }
+        }
+    } catch (e) {
+        console.info("Fetch direto bloqueado por CORS, usando proxies externos...");
+    }
+
+    // ── 3. Proxies CORS externos ──────────────────────────────
+    for (const proxyFn of PROXIES) {
+        const proxyUrl = proxyFn(PLANILHA_LINK);
+        try {
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), 10000);
+            const res = await fetch(proxyUrl, { signal: controller.signal });
+            clearTimeout(timer);
+            if (res.ok) {
+                const text = await res.text();
+                if (text && text.length > 10 && !text.trim().startsWith('<!DOCTYPE') && !text.trim().startsWith('<html')) {
+                    console.log("✅ Proxy OK:", proxyUrl.substring(0, 60));
+                    return text;
+                }
+            }
+        } catch (e) {
+            console.warn("Proxy falhou:", proxyUrl.substring(0, 60), e.message);
+        }
+    }
+
+    throw new Error("Não foi possível carregar a planilha. Configure o Apps Script endpoint ou verifique sua conexão.");
 }
 
 async function loadData() {
     tableBody.innerHTML = `<tr><td colspan="6" class="empty-state"><div class="empty-content"><p style="color:var(--text-muted)">Conectando à Planilha...</p></div></td></tr>`;
     try {
-        const csvText = await tryFetchWithProxies(PLANILHA_LINK);
+        const csvText = await fetchCSV();
         Papa.parse(csvText, {
             header: true,
             skipEmptyLines: true,
